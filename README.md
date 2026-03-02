@@ -1,200 +1,135 @@
-# Cloud-Based Finance App
+# ParamNerede - Cloud-Native AI Financial Assistant
 
-Bu repo, AI destekli bulut tabanli kisisel finans yonetim uygulamasinin **final teknik raporu**dur.
+**Live Demo:** [https://main.d23l3uhccbs9iv.amplifyapp.com/](https://main.d23l3uhccbs9iv.amplifyapp.com/)
 
-Inceleme + iyilestirme tarihi: **15 Subat 2026**
-Proje klasoru: `OneDrive/Desktop/cloud-based-finance-app`
+> **Note:** This project is a live portfolio demonstration. To optimize cloud costs, it leverages a single-AZ and event-driven asynchronous architecture. Expensive managed services (like NAT Gateways) have been intentionally replaced with budget-friendly alternatives (EC2 NAT Instance). These deviations are documented in the [Demo Constraints](#demo-constraints-vs-production) section.
 
-## 1. Proje Ozeti
-Sistem artik uctan uca calisir durumda bir serverless finans platformu kurgusundadir:
+---
 
-- `backend_lambda`: Ana API router, auth guard, receipt/budget/subscription/report/export/is zekasi orchestration.
-- `document_upload`: Ayrik upload-init lambda (presigned URL olusturma).
-- `lambda_ai`: Istatistiksel analiz + anomaly detection + forecast + pattern mining + LLM enrichment.
-- `finance-app-frontend`: React tabanli istemci.
-- `database_schema.sql`: PostgreSQL veri semasi.
+## English
 
-Mimari hedef: Cognito + API Gateway + Lambda + S3 + RDS(PostgreSQL) + Bedrock.
+### Project Overview
+ParamNerede is a serverless, cloud-native personal finance application backed by generative AI. It was built to demonstrate practical skills in AWS cloud architecture, network security, Infrastructure as Code (IaC) with Terraform, and backend engineering. 
 
-## 2. Final Mimari Akislar
+The system acts as a digital financial coach: users can track expenses, manage budgets, upload receipts for automatic OCR extraction, and receive AI-driven insights on their spending habits.
 
-### 2.1 Belge yukleme ve OCR akisi
-1. Frontend `POST /receipts/upload` cagirir.
-2. Backend presigned URL + `receipt_id` doner.
-3. Frontend dosyayi S3'e `PUT` eder.
-4. Frontend `POST /receipts/{receipt_id}/process` cagirir.
-5. OCR sonucu receipt + item alanlari DB'ye yazilir.
-6. Hata durumunda receipt `failed` olur (yanlis completed yazilmaz).
+### Architecture Diagram
 
-### 2.2 Manuel gider akisi
-1. Frontend (`AddExpense` veya `VoiceExpenseWizard`) `POST /receipts/manual` cagirir.
-2. Backend validasyon yapar, kategoriyi normalize eder ve kaydi `completed` olarak ekler.
-3. Kayit `receipts` tablosuna islenir, dashboard/raporlarda aninda gorunur.
+![AWS Architecture Diagram](diagram.png)
 
-### 2.3 AI analiz akisi
-1. Frontend `POST /analyze` cagirir.
-2. Backend son 6 ay transaction + monthlyTotals + budget + subscription payload olusturur.
-3. Backend `lambda_ai` invoke eder.
-4. Sonuc `ai_insights` tablosuna (`__meta__`, `__result__`, insight satirlari) kaydedilir.
-5. Dashboard kayitli analizi gosterir.
+### Key Architectural Decisions
 
-### 2.4 Raporlama ve export akisi
-- `GET /reports/summary`: Aylik gider toplamlari, kategori kirilimlari, top category, aggregate summary.
-- `GET /export`: CSV olusturur, S3'e koyar, gecici download URL doner.
+The architecture focuses on system resilience, performance, and cost-efficiency.
 
-## 3. Step Bazli Yapilan Iyilestirmeler
+1. **Decoupled S3 Uploads:** Files are never proxied through Lambda. The frontend requests a temporary **Presigned URL** and uploads directly to S3. This eliminates compute bottlenecks and strict Lambda payload limits.
+2. **Asynchronous Event-Driven AI:** API Gateway has a strict 29-second timeout. Since LLM inference (Bedrock) and OCR (Textract) easily exceed this, the routing Lambda invokes a background worker Lambda (`InvocationType="Event"`) and immediately returns a `202 Accepted`.
+3. **Mock-Driven CI/CD Testing:** To prevent expensive database provisioning in the pipeline, the backend is covered by `pytest` using `unittest.mock`. This strictly validates business logic and API HTTP status codes without real AWS calls.
 
-## Step 1 (tamam)
-- `backend_lambda` yeniden kuruldu ve eksik handlerlar tamamlandi.
-- Router tum ana endpointleri dogru sekilde dispatch edecek hale geldi.
-- Dashboard response contract frontend ile uyumlu hale getirildi.
+### Core Tech Stack
 
-## Step 2 (tamam)
-- AI cache/staleness mekanizmasi calisir hale getirildi (`data_sig`, TTL, cache-hit skip).
-- OCR token ve boyut limiti optimize edildi.
-- `lambda_ai` max token ve prompt yukleri azaltildi.
-- Az veri durumunda LLM auto-skip eklendi.
+| Layer | Technology |
+|---|---|
+| **Frontend** | React.js, Tailwind CSS, AWS Amplify |
+| **API** | AWS API Gateway (HTTP APIs) |
+| **Compute** | AWS Lambda (Python 3.12) |
+| **Generative AI** | Amazon Bedrock (Claude 3 Haiku) |
+| **OCR** | Amazon Textract |
+| **Database** | Amazon RDS (PostgreSQL 16) |
+| **Auth** | Amazon Cognito |
+| **Storage** | Amazon S3 |
+| **Secrets** | AWS Systems Manager (SSM) Parameter Store |
+| **IaC** | HashiCorp Terraform |
 
-## Step 3 (tamam)
-- `POST /receipts/manual` eklendi (manual + voice flow artik gercek backend'e yaziyor).
-- `GET /reports/summary` eklendi (Reports artik dummy degil, gercek veriyi cekiyor).
-- Frontend mock ekranlari gercek API ile baglandi:
-  - `AddExpense`
-  - `VoiceExpenseWizard`
-  - `Reports`
-- Frontend API debug loglari env flag altina alindi (`REACT_APP_API_DEBUG=true`).
-- API base URL env tabanli yapildi (`REACT_APP_API_BASE_URL`).
-- CORS/security headerlari env bazli sertlestirildi (`ALLOWED_ORIGIN`).
-- Upload lambda token logu ham deger yerine hash olarak loglanacak sekilde duzeltildi.
-- Build warningleri temizlendi.
+### Implementation Details
 
-## 4. AI Altyapisi: Ne Analiz Ediyor?
-`lambda_ai` katmaninda su analizler aktif:
+- **JWT & RBAC Validation:** Cognito JWTs are validated via RS256 algorithm securely *before* core Lambda processing. Role-Based Access Control differentiates `sys-admin` and `developer` groups.
+- **Cold-Start Management:** Critical AI Lambda functions are assigned version aliases (`prod`) to standardize deployments and lay the groundwork for provisioned concurrency, mitigating cold-start latency.
+- **Cost Optimization:** Cloud costs are optimized by utilizing a single-AZ RDS layout and event-driven async structures.
+- **Monitoring & Observability:** Structured JSON logs and AWS X-Ray traces enable end-to-end debugging of asynchronous workflows. OpenTelemetry and Langfuse are deeply integrated to monitor Amazon Bedrock usage, trace LLM generations, and conduct cost/token analysis.
+- **API Protection:** API Gateway default throttling protects the system from accidental high-frequency requests.
+- **Terraform IaC:** Terraform configuration files were used to structure reusable and maintainable infrastructure definitions across the AWS environment.
 
-- Anomaly Detection
-- Kategori bazli z-score
-- Merchant bazli z-score
-- IQR + global outlier
+### Network & Zero-Trust Security
 
-- Forecasting
-- EMA + linear regression blend
-- Trend sinifi (up/down/stable)
-- Confidence scoring
+The Virtual Private Cloud is partitioned to isolate the data layer:
+- **Public Subnets:** House the **NAT Instance** (for outbound traffic) and **Bastion Host** (for secure admin SSH access).
+- **Private Subnets:** House the Lambdas and RDS. These resources have **no direct inbound internet access**.
+- **Security Groups:** 
+  - `lambda-sg` only routes outbound via NAT.
+  - `rds-sg` explicitly blocks all traffic except incoming port `5432` from `lambda-sg` and `bastion-sg`.
 
-- Pattern Mining
-- Spending velocity
-- Weekday/weekend davranisi
-- Category correlation
-- Recurring payment detection
-- Category shift analizi
+### Demo Constraints vs. Production
 
-- Insight Engine
-- Onceliklendirilmis insight kartlari
-- Next action listesi
-- Kisa coach ozetleri
+To accommodate a trial-tier budget, the current architecture replaces some enterprise features with budget-friendly placeholders:
 
-- LLM Enrichment (opsiyonel)
-- Bedrock Claude modeli ile text zenginlestirme
-- JSON schema odakli, kisa prompt
+| Component | Demo Implementation | Production Standard |
+|---|---|---|
+| **High Availability** | Single-AZ RDS PostgreSQL | Multi-AZ RDS with automatic rapid failover |
+| **Outbound Routing** | EC2 NAT Instance | Managed AWS NAT Gateway (Highly available, multi-AZ) |
+| **Integration Testing** | Mock-driven pipelines only | Automated E2E integration tests against a live DB clone |
+| **Edge Security**| None currently configured | AWS WAF on the API Gateway to block DDoS/OWASP threats |
 
-## 5. Token ve Maliyet Optimizasyonu (Final Durum)
+---
 
-Sistemde iki ana AI maliyeti vardir:
+## Türkçe
 
-- OCR (vision + text)
-- AI metinsel zenginlestirme (lambda_ai)
+### Proje Özeti
+ParamNerede, üretken yapay zeka (generative AI) gücünü arkasına alan, serverless ve cloud-native bir kişisel finans uygulamasıdır. AWS bulut mimarisi, güvenli ağ tasarımı, Terraform ile altyapı kodlama (IaC) ve backend mühendisliği yetkinliklerini sergilemek amacıyla geliştirilmiştir.
 
-Uygulanan optimizasyonlar:
+Uygulama, dijital bir finansal koç görevi görür: Kullanıcılar harcamalarını takip edebilir, bütçe yapabilir, fiş görsellerini yükleyerek OCR destekli otomatik veri çekimi yapabilir ve yapay zeka tabanlı analizler alabilir.
 
-- `OCR_MAX_TOKENS` default 320
-- `OCR_MAX_FILE_BYTES` limiti aktif (buyuk dosya reddedilir)
-- Kisa OCR prompt
-- `AI_CACHE_TTL_SECONDS` ile gereksiz tekrar invoke engelleme
-- `useCache` + `forceRecompute` davranisi
-- Dashboard stale degilse kayitli analiz yeniden kullanimi
-- `lambda_ai` tarafinda `LLM_MAX_TOKENS` default 400
-- Az veri senaryosunda `skipLLM` otomatik aktif
-- Token maliyet birim fiyatlari env'den yonetilebilir:
-  - `LLM_INPUT_TOKEN_PRICE`
-  - `LLM_OUTPUT_TOKEN_PRICE`
+### Mimari Diyagram
 
-Sonuc: Gereksiz token tuketimi onceki duruma gore belirgin dusuruldu.
+![Mimari Diyagram](diagram.png)
 
-## 6. Final API Ozeti
-Auth:
-- `POST /auth/register`
-- `POST /auth/login`
-- `POST /auth/refresh`
-- `GET /auth/me`
+### Önemli Mimari Kararlar (Key Architectural Decisions)
 
-Receipts:
-- `GET /receipts`
-- `GET /receipts/{id}`
-- `PUT /receipts/{id}`
-- `DELETE /receipts/{id}`
-- `POST /receipts/upload`
-- `POST /receipts/{id}/process`
-- `POST /receipts/manual`
+Mimari tasarım; sistem dayanıklılığına, performansa ve maliyet optimizasyonuna odaklanır:
 
-Finance:
-- `GET /dashboard`
-- `POST /analyze`
-- `GET /budgets`
-- `POST /budgets`
-- `GET /subscriptions`
-- `POST /subscriptions`
-- `DELETE /subscriptions/{id}`
-- `GET /reports/summary`
-- `GET /export`
+1. **İzole S3 Yüklemeleri (Decoupled Uploads):** Dosyalar asla doğrudan Lambda üzerinden aktarılmaz. İstemci geçici bir **Presigned URL** alır ve doğrudan S3'e yükleme yapar. Bu karar, gereksiz bellek tüketimini (RAM) ve sistem darboğazlarını önler.
+2. **Asenkron Event-Driven YZ:** API Gateway'in kesin 29 saniyelik bir zaman aşımı (timeout) sınırı vardır. LLM analizi (Bedrock) ve OCR (Textract) bu süreyi aşabileceği için, yönlendirici Lambda arka plan işçisini asenkron (`InvocationType="Event"`) tetikler ve kullanıcıya anında `202 Accepted` döner.
+3. **Mock Temelli CI/CD Testleri:** Pipeline üzerinde yapılandırma maliyetlerini düşürmek için backend yapısı `unittest.mock` ve `pytest` ile test edilmiştir. Gerçek AWS çağrıları yapılmadan iş mantığı (business logic) ve HTTP dönüş kodları doğrulanır.
 
-## 7. Guvenlik ve Operasyon Notlari
-Aktiflestirilenler:
+### Temel Tech Stack
 
-- Env tabanli CORS (`ALLOWED_ORIGIN`)
-- Response security headerlari (`X-Content-Type-Options`, `Cache-Control`)
-- Upload lambda'da hassas token degerinin loglanmamasi (hash log)
+| Katman | Teknoloji |
+|---|---|
+| **Frontend** | React.js, Tailwind CSS, AWS Amplify |
+| **API** | AWS API Gateway (HTTP APIs) |
+| **Compute** | AWS Lambda (Python 3.12) |
+| **Generative AI** | Amazon Bedrock (Claude 3 Haiku) |
+| **OCR** | Amazon Textract |
+| **Database** | Amazon RDS (PostgreSQL 16) |
+| **Auth** | Amazon Cognito |
+| **Storage** | Amazon S3 |
+| **Secrets** | AWS Systems Manager (SSM) Parameter Store |
+| **IaC** | HashiCorp Terraform |
 
-Cloud tarafinda canli oncesi onerilen ek adimlar:
+### Tasarım ve Uygulama Detayları
 
-1. API Gateway WAF + rate limit policy
-2. CloudWatch alarm setleri (5xx, timeout, Bedrock hata oranlari)
-3. Secrets Manager ile DB credential yonetimi
-4. Lambda reserved concurrency ve timeout tuning
-5. S3 lifecycle ve encryption policy denetimi
-6. Opsiyonel: OCR icin SQS + DLQ ile asenkron dayaniklilik
+- **JWT ve RBAC Doğrulaması:** Cognito JWT'leri, veri işlemeden hemen önce RS256 algoritmasıyla güvenlice doğrulanır ve `sys-admin` / `developer` rolleriyle erişim kontrolü sağlanır.
+- **Cold-Start Optimizasyonu:** Kritik yapay zeka Lambda fonksiyonlarına Sürüm Alias'ı (`prod`) atanmış olup, gecikmeyi önleyecek olan Provisioned Concurrency atamasına zemin hazırlanmıştır.
+- **Maliyet Optimizasyonu (Cost Optimization):** Bulut maliyetleri, Single-AZ veritabanı kurulumu ve event-driven asenkron mimari kullanılarak optimize edilmiştir.
+- **Monitoring ve Gözlemlenebilirlik:** CloudWatch JSON logları ve X-Ray Trace'leri (izleri), asenkron iş akışlarının uçtan uca hata ayıklamasına olanak tanır. Ayrıca OpenTelemetry ve Langfuse entegrasyonu sayesinde Amazon Bedrock istekleri izlenir (LLM tracing) ve token bazlı maliyet analizleri yapılır.
+- **Rate Limiting / Güvenlik:** API Gateway'in varsayılan Throttling (hız sınırlama) özellikleri sistemi anlık, yüksek frekanslı istek krizlerine karşı korur.
+- **Terraform IaC:** Terraform modülleri (dosyaları), sürdürülebilir ve yeniden kullanılabilir altyapı tanımları oluşturmak için kullanılmıştır.
 
-## 8. Dogrulama Sonuclari
-Teknik kontroller:
+### Ağ İzolasyonu ve Zero-Trust Güvenlik
 
-- `python -m py_compile backend_lambda/lambda_function.py` -> OK
-- `python -m py_compile document_upload/lambda_function.py` -> OK
-- `python -m py_compile lambda_ai/lambda_function.py` -> OK
-- `npm run build` (`finance-app-frontend`) -> OK (warningsiz)
+Virtual Private Cloud (VPC), veri katmanını dışarıdan görünmez yapacak şekilde bölümlendirilmiştir:
+- **Public Subnet'ler:** Dışarı çıkış trafiğini yöneten **NAT Instance** ve ssh bağlantılarına kapı açan **Bastion Host** burada bulunur.
+- **Private Subnet'ler:** Lambda'lar ve RDS tam izole çalışır. **İnternetten doğrudan içerik/istek alamazlar.**
+- **Güvenlik Grupları (Security Groups):** 
+  - `lambda-sg` dışarıya sadece NAT yönünden çıkış yapabilir.
+  - `rds-sg` dış dünyayı tamamen engeller; port `5432` trafiğini sadece uygulamadan (`lambda-sg`) ve yönetim makinesinden (`bastion-sg`) kabul eder.
 
-## 9. CV'de Nasil Konumlandirilmali?
-Cloud role odakli proje anlatimi icin guclu ciktilar:
+### Demo Kısıtları vs. Production Standardı
 
-- Serverless mikro-servis ayrimi (3 Lambda, net sorumluluk dagilimi)
-- Bedrock tabanli AI analytics pipeline
-- Cognito JWT tabanli auth flow
-- S3 presigned upload + OCR process orchestration
-- RDS(PostgreSQL) + AI insight persistence
-- Maliyet optimizasyonu (cache, token guard, max-token tuning)
-- Uretim hazirligi odakli logging/security/build sertlestirmesi
+Deneme hesap bütçesine sadık kalmak adına, standart bazı kurumsal bileşenler bütçe dostu alternatiflerle değiştirilmiştir:
 
-Kisa CV ozeti ornegi:
-
-`Developed a cloud-native personal finance platform on AWS (API Gateway, Lambda, Cognito, S3, RDS, Bedrock), implemented OCR + AI analytics pipeline, reduced AI token cost via caching and prompt/token controls, and delivered production-ready frontend-backend integration.`
-
-## 10. Bilinen Sinirlar (Bilincli)
-- `database_schema.sql` icinde `currrency` alan ismi typo olarak duruyor (uygulama bu alanla uyumlu).
-- Gercek STT (speech-to-text) motoru entegre degil; voice wizard su an kontrollu mock transcript ile calisiyor ama kayit gercek backend'e yaziliyor.
-
-## 11. Sonuc
-Sistem Step 1 + Step 2 + Step 3 sonrasi,
-
-- uctan uca calisir,
-- AI akislari bagli,
-- frontend mock baglantilari kapatilmis,
-- cloud/AI mimarisi CV seviyesinde savunulabilir,
-- token maliyeti gereksiz tekrarlar acisindan optimize edilmis durumdadir.
+| Bileşen | Demo Durumu | Production Standardı |
+|---|---|---|
+| **Yüksek Erişilebilirlik (HA)**| Single-AZ RDS PostgreSQL | Otomatik hata geçişli (failover) Multi-AZ RDS |
+| **İnternet Route'u** | EC2 NAT Instance | Tam yönetilen, Multi-AZ destekli AWS NAT Gateway |
+| **Tam Kapsam Bütünleşik Test** | Sadece Mock-Driven Unit test altyapısı | CI sürecinde staging veritabanı ile koşan gerçek E2E testleri |
+| **Edge Trafik Güvenliği (WAF)**| Mevcut değil | DDoS ve OWASP savunması sağlayan API Gateway önü AWS WAF |

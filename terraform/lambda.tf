@@ -284,8 +284,9 @@ resource "aws_sqs_queue" "lambda_dlq" {
   }
 }
 
-resource "aws_lambda_function_event_invoke_config" "backend_dlq" {
-  function_name = aws_lambda_function.backend_lambda.function_name
+resource "aws_lambda_function_event_invoke_config" "ai_dlq" {
+  function_name          = aws_lambda_function.lambda_ai.function_name
+  maximum_retry_attempts = 2
 
   destination_config {
     on_failure {
@@ -320,7 +321,3 @@ resource "aws_lambda_alias" "ai_prod" {
   function_version = "$LATEST"
 }
 
-resource "aws_lambda_function_event_invoke_config" "ai_concurrency" {
-  function_name          = aws_lambda_function.lambda_ai.function_name
-  maximum_retry_attempts = 0
-}
