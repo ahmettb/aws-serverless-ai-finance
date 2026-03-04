@@ -161,8 +161,15 @@ def get_db_connection():
     Yalnızca async pattern'de kullanılır —
     analiz sonucunu doğrudan DB'ye yazar.
     """
-    global _db_conn
+    global _db_conn, DB_PASSWORD
     if _db_conn is None or _db_conn.closed:
+        if str(DB_PASSWORD).startswith("ssm:"):
+            logger.info("Resolving DB_PASSWORD from SSM", extra=log_ctx(module_name="ai_config"))
+            ssm = boto3.client("ssm", region_name=AWS_REGION)
+            param_name = DB_PASSWORD.replace("ssm:", "")
+            response = ssm.get_parameter(Name=param_name, WithDecryption=True)
+            DB_PASSWORD = response["Parameter"]["Value"]
+
         _db_conn = psycopg2.connect(
             host=DB_HOST,
             dbname=DB_NAME,
