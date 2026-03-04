@@ -310,10 +310,18 @@ const Insights = () => {
         const fh = overview?.financial_health || {};
         const st = overview?.structure || {};
         const gs = overview?.goals || {};
+
+        // Abonelik payı: toplam harcama üzerinden abonelik toplamının yüzdesi
+        const totalSpent = fh.total_spent || 0;
+        const subTotal = st.subscription_total || 0;
+        const subShare = totalSpent > 0
+            ? Math.round((subTotal / totalSpent) * 1000) / 10
+            : (st.subscription_share || 0);
+
         return [
             { label: 'Tasarruf Oranı', value: `%${fh.savings_rate || 0}`, icon: 'savings', color: 'text-emerald-500', bg: 'bg-emerald-50' },
             { label: 'Aylık Net', value: currencyFormatter.format(fh.net_balance || 0), icon: 'account_balance_wallet', color: 'text-indigo-500', bg: 'bg-indigo-50' },
-            { label: 'Abonelik Payı', value: `%${st.subscription_share || 0}`, icon: 'subscriptions', color: 'text-rose-500', bg: 'bg-rose-50' },
+            { label: 'Abonelik Payı', value: `%${subShare}`, icon: 'subscriptions', color: 'text-rose-500', bg: 'bg-rose-50' },
             { label: 'Hedef İlerleme', value: `%${gs.active_progress_pct || 0}`, icon: 'flag', color: 'text-amber-500', bg: 'bg-amber-50' }
         ];
     }, [overview]);
@@ -434,10 +442,9 @@ const Insights = () => {
                             onChange={(e) => handlePersonaChange(e.target.value)}
                             className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-0 cursor-pointer pr-8"
                         >
-                            <option value="friendly">Samimi Koç</option>
+                            <option value="friendly">Koç Modu</option>
                             <option value="professional">Profesyonel</option>
                             <option value="strict">Disiplinli</option>
-                            <option value="humorous">Esprili</option>
                         </select>
                     </div>
 

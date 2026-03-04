@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import SpendingChart from '../components/charts/SpendingChart';
@@ -36,6 +36,28 @@ const Dashboard = () => {
     // UI States
     const [loading, setLoading] = useState(true);
     const [analyzing, setAnalyzing] = useState(false);
+
+    // Rate limit: saatte 2 analiz hakkı
+    const getAnalysisRateLimit = useCallback(() => {
+        try {
+            const raw = localStorage.getItem('ai_analysis_rate');
+            if (!raw) return { count: 0, windowStart: Date.now() };
+            const data = JSON.parse(raw);
+            const now = Date.now();
+            const ONE_HOUR = 60 * 60 * 1000;
+            if (now - data.windowStart > ONE_HOUR) {
+                return { count: 0, windowStart: now };
+            }
+            return data;
+        } catch (e) {
+            return { count: 0, windowStart: Date.now() };
+        }
+    }, []);
+
+    const [rateLimit, setRateLimit] = useState(() => getAnalysisRateLimit());
+    const MAX_ANALYSES_PER_HOUR = 2;
+    const analysesLeft = Math.max(0, MAX_ANALYSES_PER_HOUR - rateLimit.count);
+    const canRunAnalysis = analysesLeft > 0;
     const [chartRange, setChartRange] = useState('1m'); // 1w, 1m, 3m
     const [chartType, setChartType] = useState('total'); // 'total' or 'category'
     const [showVoiceWizard, setShowVoiceWizard] = useState(false);
@@ -78,6 +100,18 @@ const Dashboard = () => {
     }, [chartRange, chartType]);
 
     const handleRunAnalysis = async () => {
+        // Rate limit kontrolü
+        const current = getAnalysisRateLimit();
+        if (current.count >= MAX_ANALYSES_PER_HOUR) {
+            toast.show.warning('Bu saat içinde 2 analiz hakkınızı kullandınız. Bir saat sonra tekrar deneyin.');
+            return;
+        }
+
+        // Hakkı kullan
+        const newRate = { count: current.count + 1, windowStart: current.windowStart };
+        localStorage.setItem('ai_analysis_rate', JSON.stringify(newRate));
+        setRateLimit(newRate);
+
         try {
             setAnalyzing(true);
             // Run analysis (backend saves it to DB)
@@ -97,7 +131,15 @@ const Dashboard = () => {
 
         } catch (error) {
             console.error("Analysis error:", error);
-            toast.show.error("Analiz sırasında hata oluştu");
+            if (error.message?.includes('429') || error.message?.includes('limit')) {
+                toast.show.warning("Saatlik analiz limitinize ulaştınız. 1 saat sonra tekrar deneyin.");
+                // Hakkı geri ver (backend 429 döndürdü demek ki hesaplamadı)
+                const restored = { count: Math.max(0, rateLimit.count - 1), windowStart: rateLimit.windowStart };
+                localStorage.setItem('ai_analysis_rate', JSON.stringify(restored));
+                setRateLimit(restored);
+            } else {
+                toast.show.error("Analiz sırasında hata oluştu");
+            }
         } finally {
             setAnalyzing(false);
         }
@@ -205,11 +247,13 @@ const Dashboard = () => {
                     </button>
                     <button
                         onClick={handleRunAnalysis}
-                        disabled={analyzing}
-                        className="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors disabled:opacity-70 text-xs font-bold shadow-sm"
+                        disabled={analyzing || !canRunAnalysis}
+                        className={`flex-1 sm:flex-none text-white px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors disabled:opacity-60 text-xs font-bold shadow-sm ${canRunAnalysis ? 'bg-slate-900 hover:bg-slate-800' : 'bg-slate-400 cursor-not-allowed'
+                            }`}
+                        title={canRunAnalysis ? `${analysesLeft} analiz hakkınız kaldı (saatte ${MAX_ANALYSES_PER_HOUR})` : 'Bu saat analiz hakkınız doldu'}
                     >
                         <span className="material-icons-round text-xs animate-spin-slow">{analyzing ? 'refresh' : 'auto_awesome'}</span>
-                        {analyzing ? 'Analiz...' : 'AI Analiz'}
+                        {analyzing ? 'Analiz...' : canRunAnalysis ? `AI Analiz (${analysesLeft})` : 'Limit Doldu'}
                     </button>
                 </div>
             </div>
@@ -347,10 +391,18 @@ const Dashboard = () => {
                         {/* Subscriptions */}
                         <div className="bg-white dark:bg-slate-900 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold text-slate-800 dark:text-white text-sm">Abonelikler</h3>
+                                <h3 className="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-2">
+                                    <span className="material-icons-round text-violet-500 text-base">auto_renew</span>
+                                    Abonelikler
+                                </h3>
+                                {stats?.subscriptions?.length > 0 && (
+                                    <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">
+                                        {stats.subscriptions.length} abonelik
+                                    </span>
+                                )}
                             </div>
                             <div className="space-y-3">
-                                {stats?.subscriptions?.length > 0 ? stats.subscriptions.map((sub, i) => (
+                                {stats?.subscriptions?.length > 0 ? stats.subscriptions.slice(0, 4).map((sub, i) => (
                                     <div key={i} className="flex justify-between items-center text-xs">
                                         <div className="flex items-center gap-2">
                                             <div className="w-6 h-6 rounded-full bg-violet-50 text-violet-600 flex items-center justify-center font-bold text-[10px] uppercase">
@@ -358,15 +410,17 @@ const Dashboard = () => {
                                             </div>
                                             <div>
                                                 <p className="font-bold text-slate-700">{sub.name}</p>
-                                                <p className="text-[10px] text-slate-400">{sub.next_payment_date ? new Date(sub.next_payment_date).toLocaleDateString('tr-TR') : ''}</p>
+                                                <p className="text-[10px] text-slate-400">{sub.next_payment_date ? new Date(sub.next_payment_date).toLocaleDateString('tr-TR') : 'Aylık'}</p>
                                             </div>
                                         </div>
-                                        <span className="font-bold text-slate-900">{currencyFormatter.format(sub.amount)}</span>
+                                        <span className="font-bold text-slate-900">
+                                            {sub.amount > 0 ? currencyFormatter.format(sub.amount) : <span className="text-slate-400 text-[10px]">Bilinmiyor</span>}
+                                        </span>
                                     </div>
                                 )) : <p className="text-xs text-slate-400">Abonelik bulunamadı.</p>}
                             </div>
                             <div className="mt-4 pt-3 border-t border-slate-50 dark:border-slate-800">
-                                <button onClick={() => navigate('/budget')} className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center justify-center w-full py-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg group transition-all">
+                                <button onClick={() => navigate('/expenses')} className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center justify-center w-full py-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg group transition-all">
                                     Daha fazlası için tıklayın <span className="material-icons-round text-xs group-hover:translate-x-1 transition-transform ml-1">arrow_forward</span>
                                 </button>
                             </div>

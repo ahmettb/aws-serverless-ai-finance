@@ -153,10 +153,10 @@ const FloatingAIChat = () => {
 
                                     {/* Avatar */}
                                     <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${message.role === 'user'
-                                            ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                                            : message.role === 'error'
-                                                ? 'bg-red-100 text-red-600'
-                                                : 'bg-primary text-white'
+                                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                        : message.role === 'error'
+                                            ? 'bg-red-100 text-red-600'
+                                            : 'bg-primary text-white'
                                         }`}>
                                         <span className="material-icons-round text-[16px]">
                                             {message.role === 'user' ? 'person' : message.role === 'error' ? 'error_outline' : 'smart_toy'}
@@ -165,14 +165,14 @@ const FloatingAIChat = () => {
 
                                     {/* Message Bubble */}
                                     <div className={`px-4 py-3 rounded-2xl ${message.role === 'user'
-                                            ? 'bg-primary text-white rounded-br-sm'
-                                            : message.role === 'error'
-                                                ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-bl-sm border border-red-100 dark:border-red-900/50'
-                                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-bl-sm border border-slate-200 dark:border-slate-700 shadow-sm'
+                                        ? 'bg-primary text-white rounded-br-sm'
+                                        : message.role === 'error'
+                                            ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-bl-sm border border-red-100 dark:border-red-900/50'
+                                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-bl-sm border border-slate-200 dark:border-slate-700 shadow-sm'
                                         }`}>
-                                        <div className={`prose prose-sm max-w-none ${message.role === 'user'
-                                                ? 'text-white prose-invert'
-                                                : 'dark:prose-invert prose-p:leading-relaxed prose-li:my-1'
+                                        <div className={`prose prose-xs max-w-none text-[12.5px] leading-relaxed ${message.role === 'user'
+                                            ? 'text-white prose-invert'
+                                            : 'dark:prose-invert prose-p:leading-relaxed prose-li:my-0.5'
                                             }`}>
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                 {message.content}

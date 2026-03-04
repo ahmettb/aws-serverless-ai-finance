@@ -117,15 +117,16 @@ const Expenses = () => {
         const amount = parseFloat(itemForm.amount);
         const day = parseInt(itemForm.day, 10);
 
-        if (!name || isNaN(amount) || amount <= 0) { toast.show.warning('Ad ve geçerli bir tutar giriniz'); return; }
+        if (!name) { toast.show.warning('Kalem adı gerekli'); return; }
         if (isNaN(day) || day < 1 || day > 31) { toast.show.warning('Gün 1-31 arasında olmalı'); return; }
+        const finalAmount = (!itemForm.amount && itemForm.amount !== 0) || isNaN(amount) ? 0 : Math.max(0, amount);
 
         try {
             if (editItem) {
-                await api.updateFixedExpenseItem(editItem.id, { name, amount, day });
+                await api.updateFixedExpenseItem(editItem.id, { name, amount: finalAmount, day });
                 toast.show.success('Kalem güncellendi');
             } else {
-                await api.addFixedExpenseItem({ group_id: showItemForm, name, amount, day });
+                await api.addFixedExpenseItem({ group_id: showItemForm, name, amount: finalAmount, day });
                 toast.show.success('Kalem eklendi');
             }
             resetItemForm();
@@ -354,12 +355,12 @@ const Expenses = () => {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tutar (TL)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tutar (TL) <span className="normal-case text-slate-400 font-normal">- isteğe bağlı</span></label>
                                     <input
                                         type="number"
                                         step="0.01"
                                         min="0"
-                                        placeholder="0.00"
+                                        placeholder="Bilinmiyorsa boş bırakın"
                                         value={itemForm.amount}
                                         onChange={e => setItemForm({ ...itemForm, amount: e.target.value })}
                                         className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm font-bold"
@@ -649,8 +650,8 @@ const Expenses = () => {
                                                                                     {fmtCurrency(h.amount)}
                                                                                 </span>
                                                                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${h.status === 'paid'
-                                                                                        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
-                                                                                        : 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
+                                                                                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
+                                                                                    : 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
                                                                                     }`}>
                                                                                     {h.status === 'paid' ? 'Ödendi' : 'Bekliyor'}
                                                                                 </span>

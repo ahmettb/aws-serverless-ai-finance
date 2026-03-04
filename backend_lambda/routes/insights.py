@@ -52,6 +52,14 @@ def handle_insights_overview(user_id, params):
             income_row = cur.fetchone() or {"total_income": 0}
             cur.execute("SELECT COALESCE(SUM(amount), 0) AS total_subscriptions FROM subscriptions WHERE user_id=%s", (user_id,))
             sub_row = cur.fetchone() or {"total_subscriptions": 0}
+            # Sabit gider aboneliklerini de dahil et
+            cur.execute("""
+                SELECT COALESCE(SUM(i.amount), 0) AS total_fixed_subscriptions
+                FROM fixed_expense_items i
+                JOIN fixed_expense_groups g ON g.id = i.group_id
+                WHERE g.user_id=%s AND g.category_type='Abonelik' AND i.is_active=TRUE
+            """, (user_id,))
+            fixed_sub_row = cur.fetchone() or {"total_fixed_subscriptions": 0}
             cur.execute("SELECT COALESCE(SUM(amount), 0) AS total_fixed FROM fixed_expense_items WHERE user_id=%s AND is_active=TRUE", (user_id,))
             fixed_row = cur.fetchone() or {"total_fixed": 0}
             cur.execute("SELECT category_name, amount FROM budgets WHERE user_id=%s", (user_id,))
@@ -99,7 +107,8 @@ def handle_insights_overview(user_id, params):
             total_spent = round(_safe_float(spending_row.get("total_spent")), 2)
             total_income = round(_safe_float(income_row.get("total_income")), 2)
             tx_count = int(spending_row.get("tx_count") or 0)
-            total_subscriptions = round(_safe_float(sub_row.get("total_subscriptions")), 2)
+            total_subscriptions_fixed = round(_safe_float(fixed_sub_row.get("total_fixed_subscriptions")), 2)
+            total_subscriptions = round(_safe_float(sub_row.get("total_subscriptions")) + total_subscriptions_fixed, 2)
             total_fixed = round(_safe_float(fixed_row.get("total_fixed")), 2)
             net_balance = round(total_income - total_spent, 2)
             savings_rate = round(((total_income - total_spent) / total_income) * 100, 1) if total_income > 0 else 0.0
@@ -342,6 +351,20 @@ def handle_ai_analyze(user_id, body):
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Rate limit: saatte max 2 force-recompute
+            if force_recompute:
+                cur.execute(
+                    """SELECT COUNT(*) AS cnt FROM ai_insights
+                    WHERE user_id=%s AND insight_type='__meta__'
+                    AND created_at >= NOW() - INTERVAL '1 hour'""",
+                    (user_id,)
+                )
+                rate_row = cur.fetchone()
+                if rate_row and int(rate_row.get('cnt') or 0) >= 2:
+                    return api_response(429, {
+                        'error': 'Saatlik analiz limitine ulastiniz (2/saat). Bir saat sonra tekrar deneyin.',
+                        'rate_limited': True
+                    })
             cur.execute(
                 """SELECT COUNT(*) AS count, COALESCE(SUM(total_amount),0) AS total, MAX(updated_at) AS last_upd
                 FROM receipts WHERE user_id=%s AND status != 'deleted' AND TO_CHAR(receipt_date, 'YYYY-MM')=%s""",

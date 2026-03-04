@@ -128,9 +128,8 @@ def handle_dashboard(user_id):
                     "next_payment_date": r.get("next_payment_date")
                 })
                 
-            # Sabit Giderlerden "Abonelik" kategorisindekileri getir
             cur.execute("""
-                SELECT i.title AS name, p.amount, p.payment_date AS next_payment_date
+                SELECT i.name AS name, p.amount, p.payment_date AS next_payment_date
                 FROM fixed_expense_payments p
                 JOIN fixed_expense_items i ON p.item_id = i.id
                 JOIN fixed_expense_groups g ON i.group_id = g.id
