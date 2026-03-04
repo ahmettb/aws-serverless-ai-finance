@@ -265,8 +265,8 @@ const Documents = () => {
                                 {filteredReceipts.map(r => (
                                     <tr
                                         key={r.id}
-                                        onClick={() => setSelectedReceipt(r)}
-                                        className={`group cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 ${selectedReceipt?.id === r.id ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
+                                        onClick={() => navigate(`/receipts/${r.id}`)}
+                                        className="group cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
                                     >
                                         <td className="p-4 pl-6">
                                             <div className="flex items-center gap-3">
@@ -345,107 +345,7 @@ const Documents = () => {
                 </div>
             </div>
 
-            {/* Quick View Drawer */}
-            {selectedReceipt && (
-                <div className="fixed inset-y-0 right-0 w-[450px] bg-white dark:bg-slate-900 shadow-[0_0_50px_rgba(0,0,0,0.2)] z-40 transform transition-transform animate-slide-in-right flex flex-col border-l border-slate-200 dark:border-slate-800">
-                    {/* Drawer Header */}
-                    <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                        <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm ${statusConfig[selectedReceipt.status]?.bg?.replace('100', '500') || 'bg-gray-500'}`}>
-                                <span className="material-icons-round text-lg">receipt_long</span>
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-slate-900 dark:text-white">Fiş Detayı</h3>
-                                <p className="text-xs text-slate-500 font-mono">{selectedReceipt.id}</p>
-                            </div>
-                        </div>
-                        <button onClick={() => setSelectedReceipt(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 hover:shadow-sm transition-all">
-                            <span className="material-icons-round text-sm">close</span>
-                        </button>
-                    </div>
-
-                    {/* Scrollable Content */}
-                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                        {/* Status Alert */}
-                        {selectedReceipt.status === 'failed' && (
-                            <div className="bg-red-50 text-red-700 p-4 rounded-xl text-sm font-medium border border-red-100 flex items-start gap-3">
-                                <span className="material-icons-round mt-0.5">error</span>
-                                <div>
-                                    <p className="font-bold">İşlem Başarısız</p>
-                                    <p className="opacity-80 mt-1">Bu fiş işlenirken bir sorun oluştu. Lütfen tekrar yükleyin veya manuel düzenleyin.</p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Image Preview */}
-                        <div className="aspect-[3/4] bg-slate-100 dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 relative group shadow-inner flex items-center justify-center">
-                            {selectedReceipt.image_url ? (
-                                <img src={selectedReceipt.image_url} alt="Receipt" className="max-w-full max-h-full object-contain" />
-                            ) : (
-                                <div className="text-slate-400 text-center">
-                                    <span className="material-icons-round text-4xl opacity-30 block mb-2">image_not_supported</span>
-                                    <span className="text-sm">Görsel yok</span>
-                                </div>
-                            )}
-                            {selectedReceipt.image_url && (
-                                <a
-                                    href={selectedReceipt.image_url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="absolute bottom-4 right-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur text-slate-900 dark:text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg flex items-center gap-2 hover:scale-105 transition-all opacity-0 group-hover:opacity-100"
-                                >
-                                    <span className="material-icons-round text-sm">visibility</span>
-                                    Tam Ekran
-                                </a>
-                            )}
-                        </div>
-
-                        {/* Key Value Pairs */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800/50">
-                                <span className="text-xs font-bold text-slate-400 uppercase block mb-1">Tarih</span>
-                                <p className="font-bold text-slate-900 dark:text-white">{new Date(selectedReceipt.receipt_date || selectedReceipt.date).toLocaleDateString('tr-TR')}</p>
-                            </div>
-                            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800/50">
-                                <span className="text-xs font-bold text-slate-400 uppercase block mb-1">Tutar</span>
-                                <p className="font-bold text-slate-900 dark:text-white">{formatCurrency(selectedReceipt.total_amount || selectedReceipt.amount)}</p>
-                            </div>
-                        </div>
-
-                        {/* Merchant & Category */}
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase block mb-2">Mağaza Bilgisi</label>
-                            <div className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                                <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/20 text-indigo-600 flex items-center justify-center">
-                                    <span className="material-icons-round">store</span>
-                                </div>
-                                <div className="flex-1">
-                                    <p className="font-bold text-slate-900 dark:text-white">{selectedReceipt.merchant_name || 'Bilinmiyor'}</p>
-                                    <p className="text-xs text-slate-500">{selectedReceipt.merchant_address || 'Adres yok'}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-                            <button
-                                onClick={() => navigate(`/receipts/${selectedReceipt.id}`)}
-                                className="flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 py-3 rounded-xl font-bold text-sm text-slate-900 dark:text-white hover:bg-slate-50 transition-colors"
-                            >
-                                <span className="material-icons-round text-sm">edit</span>
-                                Düzenle
-                            </button>
-                            <button
-                                onClick={() => confirmDelete(selectedReceipt.id)}
-                                className="flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/20 py-3 rounded-xl font-bold text-sm text-red-600 hover:bg-red-100 transition-colors"
-                            >
-                                <span className="material-icons-round text-sm">delete</span>
-                                Sil
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* The right-side Quick View Drawer has been removed. Users now navigate directly to ReceiptDetail. */}
         </DashboardLayout>
     );
 };

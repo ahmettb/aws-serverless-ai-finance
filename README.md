@@ -23,7 +23,8 @@ The architecture focuses on system resilience, performance, and cost-efficiency.
 
 1. **Decoupled S3 Uploads:** Files are never proxied through Lambda. The frontend requests a temporary **Presigned URL** and uploads directly to S3. This eliminates compute bottlenecks and strict Lambda payload limits.
 2. **Asynchronous Event-Driven AI:** API Gateway has a strict 29-second timeout. Since LLM inference (Bedrock) and OCR (Textract) easily exceed this, the routing Lambda invokes a background worker Lambda (`InvocationType="Event"`) and immediately returns a `202 Accepted`.
-3. **Mock-Driven CI/CD Testing:** To prevent expensive database provisioning in the pipeline, the backend is covered by `pytest` using `unittest.mock`. This strictly validates business logic and API HTTP status codes without real AWS calls.
+3. **Structured AI Insights:** The Worker Lambda aggregates monthly spending, compares it against user-defined budgets, and feeds the data to Claude 3. The LLM then returns structured JSON arrays containing personalized financial warnings, actionable advice, and dynamically detected anomalies, which are rendered on the frontend dashboard.
+4. **Mock-Driven CI/CD Testing:** To prevent expensive database provisioning in the pipeline, the backend is covered by `pytest` using `unittest.mock`. This strictly validates business logic and API HTTP status codes without real AWS calls.
 
 ### Core Tech Stack
 
@@ -88,7 +89,8 @@ Mimari tasarım; sistem dayanıklılığına, performansa ve maliyet optimizasyo
 
 1. **İzole S3 Yüklemeleri (Decoupled Uploads):** Dosyalar asla doğrudan Lambda üzerinden aktarılmaz. İstemci geçici bir **Presigned URL** alır ve doğrudan S3'e yükleme yapar. Bu karar, gereksiz bellek tüketimini (RAM) ve sistem darboğazlarını önler.
 2. **Asenkron Event-Driven YZ:** API Gateway'in kesin 29 saniyelik bir zaman aşımı (timeout) sınırı vardır. LLM analizi (Bedrock) ve OCR (Textract) bu süreyi aşabileceği için, yönlendirici Lambda arka plan işçisini asenkron (`InvocationType="Event"`) tetikler ve kullanıcıya anında `202 Accepted` döner.
-3. **Mock Temelli CI/CD Testleri:** Pipeline üzerinde yapılandırma maliyetlerini düşürmek için backend yapısı `unittest.mock` ve `pytest` ile test edilmiştir. Gerçek AWS çağrıları yapılmadan iş mantığı (business logic) ve HTTP dönüş kodları doğrulanır.
+3. **Yapılandırılmış YZ Analizleri (Structured AI Insights):** Worker Lambda, kullanıcının aylık harcamalarını toplayıp bütçesiyle kıyaslar ve bu veriyi Claude 3'e besler. LLM; kişiselleştirilmiş finansal uyarılar, hedeflere yönelik tavsiyeler ve tespit edilen anomalileri yapılandırılmış JSON dizileri olarak döndürür ve frontend'de dinamik olarak sergilenmesini sağlar.
+4. **Mock Temelli CI/CD Testleri:** Pipeline üzerinde yapılandırma maliyetlerini düşürmek için backend yapısı `unittest.mock` ve `pytest` ile test edilmiştir. Gerçek AWS çağrıları yapılmadan iş mantığı (business logic) ve HTTP dönüş kodları doğrulanır.
 
 ### Temel Tech Stack
 
