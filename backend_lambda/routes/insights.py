@@ -351,20 +351,6 @@ def handle_ai_analyze(user_id, body):
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Rate limit: saatte max 2 force-recompute
-            if force_recompute:
-                cur.execute(
-                    """SELECT COUNT(*) AS cnt FROM ai_insights
-                    WHERE user_id=%s AND insight_type='__meta__'
-                    AND created_at >= NOW() - INTERVAL '1 hour'""",
-                    (user_id,)
-                )
-                rate_row = cur.fetchone()
-                if rate_row and int(rate_row.get('cnt') or 0) >= 2:
-                    return api_response(429, {
-                        'error': 'Saatlik analiz limitine ulastiniz (2/saat). Bir saat sonra tekrar deneyin.',
-                        'rate_limited': True
-                    })
             cur.execute(
                 """SELECT COUNT(*) AS count, COALESCE(SUM(total_amount),0) AS total, MAX(updated_at) AS last_upd
                 FROM receipts WHERE user_id=%s AND status != 'deleted' AND TO_CHAR(receipt_date, 'YYYY-MM')=%s""",

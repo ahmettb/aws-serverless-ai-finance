@@ -482,21 +482,6 @@ const Insights = () => {
                 </div>
             )}
 
-            {/* Key Metrics */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                {keyMetrics.map((metric) => (
-                    <div key={metric.label} className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start mb-2">
-                            <div className={`p-2 rounded-xl ${metric.bg} ${metric.color}`}>
-                                <span className="material-icons-round text-xl">{metric.icon}</span>
-                            </div>
-                        </div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">{metric.label}</p>
-                        <h3 className="text-2xl font-bold mt-1 text-slate-800 dark:text-white">{metric.value}</h3>
-                    </div>
-                ))}
-            </div>
-
             {/* Impact Tracking Panel */}
             {impactData && impactData.totalActions > 0 && (
                 <div className="mb-8 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-2xl p-6 border border-emerald-200 dark:border-emerald-800/50">

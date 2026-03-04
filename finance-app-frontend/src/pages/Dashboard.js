@@ -37,27 +37,6 @@ const Dashboard = () => {
     const [loading, setLoading] = useState(true);
     const [analyzing, setAnalyzing] = useState(false);
 
-    // Rate limit: saatte 2 analiz hakkı
-    const getAnalysisRateLimit = useCallback(() => {
-        try {
-            const raw = localStorage.getItem('ai_analysis_rate');
-            if (!raw) return { count: 0, windowStart: Date.now() };
-            const data = JSON.parse(raw);
-            const now = Date.now();
-            const ONE_HOUR = 60 * 60 * 1000;
-            if (now - data.windowStart > ONE_HOUR) {
-                return { count: 0, windowStart: now };
-            }
-            return data;
-        } catch (e) {
-            return { count: 0, windowStart: Date.now() };
-        }
-    }, []);
-
-    const [rateLimit, setRateLimit] = useState(() => getAnalysisRateLimit());
-    const MAX_ANALYSES_PER_HOUR = 2;
-    const analysesLeft = Math.max(0, MAX_ANALYSES_PER_HOUR - rateLimit.count);
-    const canRunAnalysis = analysesLeft > 0;
     const [chartRange, setChartRange] = useState('1m'); // 1w, 1m, 3m
     const [chartType, setChartType] = useState('total'); // 'total' or 'category'
     const [showVoiceWizard, setShowVoiceWizard] = useState(false);
@@ -100,17 +79,6 @@ const Dashboard = () => {
     }, [chartRange, chartType]);
 
     const handleRunAnalysis = async () => {
-        // Rate limit kontrolü
-        const current = getAnalysisRateLimit();
-        if (current.count >= MAX_ANALYSES_PER_HOUR) {
-            toast.show.warning('Bu saat içinde 2 analiz hakkınızı kullandınız. Bir saat sonra tekrar deneyin.');
-            return;
-        }
-
-        // Hakkı kullan
-        const newRate = { count: current.count + 1, windowStart: current.windowStart };
-        localStorage.setItem('ai_analysis_rate', JSON.stringify(newRate));
-        setRateLimit(newRate);
 
         try {
             setAnalyzing(true);
@@ -131,15 +99,7 @@ const Dashboard = () => {
 
         } catch (error) {
             console.error("Analysis error:", error);
-            if (error.message?.includes('429') || error.message?.includes('limit')) {
-                toast.show.warning("Saatlik analiz limitinize ulaştınız. 1 saat sonra tekrar deneyin.");
-                // Hakkı geri ver (backend 429 döndürdü demek ki hesaplamadı)
-                const restored = { count: Math.max(0, rateLimit.count - 1), windowStart: rateLimit.windowStart };
-                localStorage.setItem('ai_analysis_rate', JSON.stringify(restored));
-                setRateLimit(restored);
-            } else {
-                toast.show.error("Analiz sırasında hata oluştu");
-            }
+            toast.show.error("Analiz sırasında hata oluştu");
         } finally {
             setAnalyzing(false);
         }
@@ -247,13 +207,12 @@ const Dashboard = () => {
                     </button>
                     <button
                         onClick={handleRunAnalysis}
-                        disabled={analyzing || !canRunAnalysis}
-                        className={`flex-1 sm:flex-none text-white px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors disabled:opacity-60 text-xs font-bold shadow-sm ${canRunAnalysis ? 'bg-slate-900 hover:bg-slate-800' : 'bg-slate-400 cursor-not-allowed'
-                            }`}
-                        title={canRunAnalysis ? `${analysesLeft} analiz hakkınız kaldı (saatte ${MAX_ANALYSES_PER_HOUR})` : 'Bu saat analiz hakkınız doldu'}
+                        disabled={analyzing}
+                        className="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors disabled:opacity-60 text-xs font-bold shadow-sm"
+                        title="Harcamalarınızı yapay zeka ile analiz edin"
                     >
                         <span className="material-icons-round text-xs animate-spin-slow">{analyzing ? 'refresh' : 'auto_awesome'}</span>
-                        {analyzing ? 'Analiz...' : canRunAnalysis ? `AI Analiz (${analysesLeft})` : 'Limit Doldu'}
+                        {analyzing ? 'Analiz...' : 'AI Analiz'}
                     </button>
                 </div>
             </div>

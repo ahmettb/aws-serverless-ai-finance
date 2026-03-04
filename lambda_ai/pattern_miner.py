@@ -65,7 +65,17 @@ class PatternMiner:
         if not days:
             return None
 
-        latest_day = max(days)
+        # HATA DÜZELTME: Günlük ortalama hesaplanırken son fiş girilen gün değil, 
+        # takvimdeki "gerçek" gün baz alınmalıdır (Eğer şu anki aydaysak).
+        current_date_str = datetime.now().strftime("%Y-%m-%d")
+        if current_date_str.startswith(period):
+            # İçinde bulunduğumuz aysak, bugünün gününü al (en az 1)
+            latest_day = max(int(current_date_str.split("-")[2]), 1)
+        else:
+            # Geçmiş aysa, ayın son gününü bul (o ayın toplam gün sayısına bölünsün diye)
+            next_m = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+            days_in_month = (next_m - date(year, month, 1)).days
+            latest_day = days_in_month
         next_m = (
             date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
         )

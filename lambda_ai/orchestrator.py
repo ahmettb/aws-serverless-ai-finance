@@ -52,8 +52,15 @@ def compute_health_score(
     breakdown: dict = {}
 
     # 1) Tasarruf oranı
+    # HATA DÜZELTME: Eğer gelir 0 ise ve gider varsa (negatif net), savings rate
+    # matematiksel olarak 0 gelsin diye 10 puan verilmesini engelle
+    period_income = sf(financial_health.get("period_income", 0))
+    period_spent = sf(financial_health.get("period_spent", 0))
     savings_rate = sf(financial_health.get("savings_rate", 0))
-    if savings_rate >= 20:
+    
+    if period_income <= 0 and period_spent > 0:
+        s_score = 0
+    elif savings_rate >= 20:
         s_score = 30
     elif savings_rate >= 10:
         s_score = 20
@@ -238,6 +245,13 @@ def run_analysis(payload: dict) -> dict:
     all_insights: list = []
     all_patterns: dict = {}
 
+    # Sadece hedeflenen periyot ve öncesini al (geleceği dahil etme)
+    monthly_totals = [m for m in monthly_totals if (m.get("month") or "") <= period]
+    
+    # Trend, Forecast ve Kategori analizi için sadece TAMAMLANMIŞ ayları kullan
+    current_real_month = datetime.now().strftime("%Y-%m")
+    completed_months = [m for m in monthly_totals if m.get("month") != current_real_month]
+
     # ── STEP 1: Complex Anomaly Detection ─────────────────────────
     step_start = time.time()
     try:
@@ -259,7 +273,8 @@ def run_analysis(payload: dict) -> dict:
     # ── STEP 2: Forecasting ───────────────────────────────────────
     step_start = time.time()
     try:
-        forecast = ForecastEngine.forecast(monthly_totals)
+        # Tahmin ve trend için HİÇBİR ZAMAN eksik ay kullanılmaz!
+        forecast = ForecastEngine.forecast(completed_months)
         elapsed = int((time.time() - step_start) * 1000)
         logger.info(
             f"Forecast complete — estimate={forecast.get('next_month_estimate', 0):.0f} TL trend={forecast.get('trend')}",
@@ -277,6 +292,7 @@ def run_analysis(payload: dict) -> dict:
     # ── STEP 3: Pattern Mining ────────────────────────────────────
     step_start = time.time()
     try:
+        # Hız (velocity) analizi İÇİNDE bulunduğumuz ay için çok kritiktir (eksik olsa da).
         velocity = PatternMiner.spending_velocity(transactions, period)
         if velocity:
             all_patterns["velocity"] = velocity
@@ -285,7 +301,8 @@ def run_analysis(payload: dict) -> dict:
         if dow:
             all_patterns["day_distribution"] = dow
 
-        cat_corr = PatternMiner.category_correlation(monthly_totals)
+        # Korelasyon ve kaymalar (shifts) SADECE tamamlanmış aylar üzerinden yapılmalı
+        cat_corr = PatternMiner.category_correlation(completed_months)
         if cat_corr:
             all_patterns["category_correlation"] = cat_corr
 
@@ -293,7 +310,7 @@ def run_analysis(payload: dict) -> dict:
         if recurring:
             all_patterns["recurring_payments"] = recurring
 
-        cat_shifts = PatternMiner.category_shifts(monthly_totals)
+        cat_shifts = PatternMiner.category_shifts(completed_months)
         if cat_shifts:
             all_patterns["category_shifts"] = cat_shifts
 
