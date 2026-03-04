@@ -27,7 +27,7 @@ def _compute_analysis_signature(cur, user_id, period, persona="friendly"):
     receipts = cur.fetchone() or {}
 
     cur.execute(
-        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(updated_at) AS last_upd
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(created_at) AS last_upd
         FROM incomes WHERE user_id=%s AND TO_CHAR(income_date, 'YYYY-MM')=%s""",
         (user_id, period),
     )
