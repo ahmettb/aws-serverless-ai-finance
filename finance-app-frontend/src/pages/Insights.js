@@ -10,7 +10,12 @@ const currencyFormatter = new Intl.NumberFormat('tr-TR', {
     maximumFractionDigits: 0
 });
 
-const defaultMonth = new Date().toISOString().slice(0, 7);
+const formatMonthKey = (d) => {
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${d.getFullYear()}-${month}`;
+};
+
+const defaultMonth = formatMonthKey(new Date());
 
 const Insights = () => {
     const toast = useToast();
@@ -90,7 +95,7 @@ const Insights = () => {
         try {
             const now = new Date();
             const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            const lastMonthStr = lastMonth.toISOString().slice(0, 7);
+            const lastMonthStr = formatMonthKey(lastMonth);
 
             const [lastActions, currentOverview] = await Promise.all([
                 api.getAIActions(lastMonthStr),

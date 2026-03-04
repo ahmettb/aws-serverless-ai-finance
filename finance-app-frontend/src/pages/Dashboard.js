@@ -24,6 +24,12 @@ const formatDateWithDay = (dateStr) => {
     });
 };
 
+const getCurrentMonth = () => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return `${now.getFullYear()}-${month}`;
+};
+
 const Dashboard = () => {
     const navigate = useNavigate();
     const toast = useToast();
@@ -83,7 +89,7 @@ const Dashboard = () => {
         try {
             setAnalyzing(true);
             // Run analysis (backend saves it to DB)
-            const period = new Date().toISOString().slice(0, 7);
+            const period = getCurrentMonth();
             await api.analyzeSpending({ period, useCache: false, forceRecompute: true });
 
             // Fetch fresh dashboard data (Single Source of Truth)

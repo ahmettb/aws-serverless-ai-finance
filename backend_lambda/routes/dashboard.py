@@ -14,6 +14,60 @@ def _compute_data_signature(total_amount, receipt_count, last_upd, persona="frie
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
+def _compute_analysis_signature(cur, user_id, period, persona="friendly"):
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(total_amount),0) AS total, MAX(updated_at) AS last_upd
+        FROM receipts WHERE user_id=%s AND status != 'deleted' AND TO_CHAR(receipt_date, 'YYYY-MM')=%s""",
+        (user_id, period),
+    )
+    receipts = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(updated_at) AS last_upd
+        FROM incomes WHERE user_id=%s AND TO_CHAR(income_date, 'YYYY-MM')=%s""",
+        (user_id, period),
+    )
+    incomes = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(updated_at) AS last_upd
+        FROM budgets WHERE user_id=%s""",
+        (user_id,),
+    )
+    budgets = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count,
+                  COALESCE(SUM(target_amount),0) + COALESCE(SUM(current_amount),0) AS total,
+                  MAX(updated_at) AS last_upd
+        FROM financial_goals WHERE user_id=%s AND status != 'archived'""",
+        (user_id,),
+    )
+    goals = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(created_at) AS last_upd
+        FROM subscriptions WHERE user_id=%s""",
+        (user_id,),
+    )
+    subscriptions = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(updated_at) AS last_upd
+        FROM fixed_expense_payments
+        WHERE user_id=%s AND status='paid' AND TO_CHAR(payment_date, 'YYYY-MM')=%s""",
+        (user_id, period),
+    )
+    fixed = cur.fetchone() or {}
+
+    rows = [receipts, incomes, budgets, goals, subscriptions, fixed]
+    total = sum(_safe_float(r.get("total"), 0.0) for r in rows)
+    count = sum(int(r.get("count") or 0) for r in rows)
+    last_upd_candidates = [r.get("last_upd") for r in rows if r.get("last_upd") is not None]
+    last_upd = max(last_upd_candidates) if last_upd_candidates else datetime.min
+    return _compute_data_signature(total, count, last_upd, persona)
+
+
 def handle_dashboard(user_id):
     period = datetime.now().strftime("%Y-%m")
     conn = get_db_connection()
@@ -74,11 +128,7 @@ def handle_dashboard(user_id):
             if isinstance(saved_analysis, str):
                 try: saved_analysis = json.loads(saved_analysis)
                 except Exception: saved_analysis = None
-            data_sig = _compute_data_signature(
-                _safe_float(summary_row["total"]) + _safe_float(fp_summary["fp_total"]),
-                int(summary_row["count"]) + int(fp_summary["fp_count"]),
-                summary_row["last_upd"] or datetime.min,
-            )
+            data_sig = _compute_analysis_signature(cur, user_id, period)
             is_stale = True
             if meta and isinstance(meta, dict):
                 generated_at = meta.get("generated_at")

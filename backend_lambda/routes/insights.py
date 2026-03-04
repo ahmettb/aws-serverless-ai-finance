@@ -17,6 +17,62 @@ def _compute_data_signature(total_amount, receipt_count, last_upd, persona="frie
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
+def _compute_analysis_signature(cur, user_id, period, persona="friendly"):
+    # Aylık analiz sonucunu etkileyen ana veri kaynaklarını aynı imzada topla.
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(total_amount),0) AS total, MAX(updated_at) AS last_upd
+        FROM receipts WHERE user_id=%s AND status != 'deleted' AND TO_CHAR(receipt_date, 'YYYY-MM')=%s""",
+        (user_id, period),
+    )
+    receipts = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(updated_at) AS last_upd
+        FROM incomes WHERE user_id=%s AND TO_CHAR(income_date, 'YYYY-MM')=%s""",
+        (user_id, period),
+    )
+    incomes = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(updated_at) AS last_upd
+        FROM budgets WHERE user_id=%s""",
+        (user_id,),
+    )
+    budgets = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count,
+                  COALESCE(SUM(target_amount),0) + COALESCE(SUM(current_amount),0) AS total,
+                  MAX(updated_at) AS last_upd
+        FROM financial_goals WHERE user_id=%s AND status != 'archived'""",
+        (user_id,),
+    )
+    goals = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(created_at) AS last_upd
+        FROM subscriptions WHERE user_id=%s""",
+        (user_id,),
+    )
+    subscriptions = cur.fetchone() or {}
+
+    cur.execute(
+        """SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS total, MAX(updated_at) AS last_upd
+        FROM fixed_expense_payments
+        WHERE user_id=%s AND status='paid' AND TO_CHAR(payment_date, 'YYYY-MM')=%s""",
+        (user_id, period),
+    )
+    fixed = cur.fetchone() or {}
+
+    rows = [receipts, incomes, budgets, goals, subscriptions, fixed]
+    total = sum(_safe_float(r.get("total"), 0.0) for r in rows)
+    count = sum(int(r.get("count") or 0) for r in rows)
+    last_upd_candidates = [r.get("last_upd") for r in rows if r.get("last_upd") is not None]
+    last_upd = max(last_upd_candidates) if last_upd_candidates else datetime.min
+    data_sig = _compute_data_signature(total, count, last_upd, persona)
+    return data_sig, receipts
+
+
 def _normalize_action_status(value, default="pending"):
     allowed = {"pending", "done", "dismissed"}
     candidate = str(value or default).strip().lower()
@@ -32,6 +88,8 @@ def _normalize_action_priority(value, default="MEDIUM"):
 def handle_insights_overview(user_id, params):
     params = params or {}
     period, period_start, period_end = _period_bounds(params.get("month"))
+    prev_period_end = period_start - timedelta(days=1)
+    prev_period_start = prev_period_end.replace(day=1)
     days_in_month = (period_end - period_start).days + 1
     is_current_period = period == datetime.now().strftime("%Y-%m")
     elapsed_days = datetime.now().day if is_current_period else days_in_month
@@ -50,6 +108,17 @@ def handle_insights_overview(user_id, params):
                 (user_id, period_start, period_end),
             )
             income_row = cur.fetchone() or {"total_income": 0}
+            cur.execute(
+                """SELECT COALESCE(SUM(total_amount), 0) AS total_spent
+                FROM receipts WHERE user_id=%s AND status != 'deleted' AND receipt_date BETWEEN %s AND %s""",
+                (user_id, prev_period_start, prev_period_end),
+            )
+            prev_spending_row = cur.fetchone() or {"total_spent": 0}
+            cur.execute(
+                "SELECT COALESCE(SUM(amount), 0) AS total_income FROM incomes WHERE user_id=%s AND income_date BETWEEN %s AND %s",
+                (user_id, prev_period_start, prev_period_end),
+            )
+            prev_income_row = cur.fetchone() or {"total_income": 0}
             cur.execute("SELECT COALESCE(SUM(amount), 0) AS total_subscriptions FROM subscriptions WHERE user_id=%s", (user_id,))
             sub_row = cur.fetchone() or {"total_subscriptions": 0}
             # Sabit gider aboneliklerini de dahil et
@@ -112,6 +181,13 @@ def handle_insights_overview(user_id, params):
             total_fixed = round(_safe_float(fixed_row.get("total_fixed")), 2)
             net_balance = round(total_income - total_spent, 2)
             savings_rate = round(((total_income - total_spent) / total_income) * 100, 1) if total_income > 0 else 0.0
+            prev_spent = round(_safe_float(prev_spending_row.get("total_spent")), 2)
+            prev_income = round(_safe_float(prev_income_row.get("total_income")), 2)
+            prev_savings_rate = (
+                round(((prev_income - prev_spent) / prev_income) * 100, 1)
+                if prev_income > 0
+                else None
+            )
             subscription_share = round((total_subscriptions / total_spent) * 100, 1) if total_spent > 0 else 0.0
             fixed_share = round((total_fixed / total_spent) * 100, 1) if total_spent > 0 else 0.0
             budget_adherence = round((met_count / budgets_count) * 100, 1) if budgets_count > 0 else 0.0
@@ -137,6 +213,7 @@ def handle_insights_overview(user_id, params):
                 "financial_health": {
                     "total_spent": total_spent, "total_income": total_income,
                     "net_balance": net_balance, "savings_rate": savings_rate,
+                    "prev_savings_rate": prev_savings_rate,
                     "daily_burn": daily_burn, "projected_month_end_spend": projected_month_end,
                     "transactions_count": tx_count,
                 },
@@ -351,12 +428,7 @@ def handle_ai_analyze(user_id, body):
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """SELECT COUNT(*) AS count, COALESCE(SUM(total_amount),0) AS total, MAX(updated_at) AS last_upd
-                FROM receipts WHERE user_id=%s AND status != 'deleted' AND TO_CHAR(receipt_date, 'YYYY-MM')=%s""",
-                (user_id, period),
-            )
-            sig_row = cur.fetchone()
+            current_data_sig, sig_row = _compute_analysis_signature(cur, user_id, period, persona)
             if not sig_row or sig_row["count"] < 1:
                 empty_analysis = {
                     "coach": {"headline": "Analiz için yeterli veri yok.", "summary": "Bu ay için henüz analiz edilecek harcama verisi bulunamadı.", "focus_areas": ["Fiş ekleme", "Kategori düzeni", "Bütçe takibi"]},
@@ -366,7 +438,7 @@ def handle_ai_analyze(user_id, body):
                     "meta": {"generated_at": datetime.utcnow().isoformat() + "Z", "analysis_version": "v5", "period": period, "model_version": BEDROCK_MODEL_ID, "cache_hit": False, "insufficient_data": True},
                 }
                 try:
-                    empty_meta = {"generated_at": datetime.utcnow().isoformat(), "data_sig": _compute_data_signature(sig_row["total"], sig_row["count"], sig_row["last_upd"] or datetime.min, persona), "model": BEDROCK_MODEL_ID, "cache_hit": False, "status": "done", "ttl_seconds": 21600}
+                    empty_meta = {"generated_at": datetime.utcnow().isoformat(), "data_sig": current_data_sig, "model": BEDROCK_MODEL_ID, "cache_hit": False, "status": "done", "ttl_seconds": 21600}
                     cur.execute("DELETE FROM ai_insights WHERE user_id=%s AND related_period=%s", (user_id, period))
                     cur.execute("INSERT INTO ai_insights (user_id, insight_type, insight_text, related_period) VALUES (%s,%s,%s,%s)", (user_id, "__meta__", json.dumps(empty_meta, default=_json_default), period))
                     cur.execute("INSERT INTO ai_insights (user_id, insight_type, insight_text, related_period) VALUES (%s,%s,%s,%s)", (user_id, "__result__", json.dumps(empty_analysis, default=_json_default), period))
@@ -374,8 +446,6 @@ def handle_ai_analyze(user_id, body):
                 except Exception as e:
                     logger.error(f"Failed to save empty analysis state: {e}")
                 return api_response(200, empty_analysis)
-
-            current_data_sig = _compute_data_signature(sig_row["total"], sig_row["count"], sig_row["last_upd"] or datetime.min, persona)
 
             # ── Cache & Processing State Kontrolü ─────────────────
             cached_meta, cached_result = None, None
@@ -430,9 +500,13 @@ def handle_ai_analyze(user_id, body):
             period_start = f"{period}-01"
             cur.execute(
                 """SELECT merchant_name AS merchant, total_amount AS amount, TO_CHAR(receipt_date, 'YYYY-MM-DD') AS date, category_id
-                FROM receipts WHERE user_id=%s AND status != 'deleted' AND receipt_date >= DATE(%s) - INTERVAL '6 months'
+                FROM receipts
+                WHERE user_id=%s
+                  AND status != 'deleted'
+                  AND receipt_date >= DATE(%s) - INTERVAL '6 months'
+                  AND receipt_date < DATE(%s) + INTERVAL '1 month'
                 ORDER BY receipt_date ASC""",
-                (user_id, period_start),
+                (user_id, period_start, period_start),
             )
             txs = cur.fetchall()
             for tx in txs:

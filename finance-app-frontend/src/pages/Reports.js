@@ -10,11 +10,17 @@ const currencyFormatter = new Intl.NumberFormat('tr-TR', {
     maximumFractionDigits: 0
 });
 
+const getCurrentMonth = () => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return `${now.getFullYear()}-${month}`;
+};
+
 const Reports = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [refreshingAi, setRefreshingAi] = useState(false);
-    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [month, setMonth] = useState(getCurrentMonth());
 
     const [data, setData] = useState(null);
     const [aiSummary, setAiSummary] = useState(null);

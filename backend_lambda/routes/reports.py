@@ -191,19 +191,20 @@ def handle_reports_ai_summary(user_id, params):
             for r in day_rows:
                 if r.get("day_type") == "weekend": weekend_total = _safe_float(r.get("total"), 0.0)
                 else: weekday_total = _safe_float(r.get("total"), 0.0)
+            current_month_total, prev_month_total = total, 0.0
+            for row in month_compare_rows:
+                m = row.get("month")
+                if m == month_str: current_month_total = _safe_float(row.get("total"), current_month_total)
+                else: prev_month_total = _safe_float(row.get("total"), prev_month_total)
+
             risk_score = 20
-            if avg > 0 and total > (avg * count * 1.05): risk_score += 10
+            if prev_month_total > 0 and current_month_total > (prev_month_total * 1.05): risk_score += 10
             if weekend_total > weekday_total and weekend_total > 0: risk_score += 20
             if count > 0 and highest_rows:
                 top_amt = _safe_float(highest_rows[0].get("total_amount"), 0.0)
                 if avg > 0 and top_amt >= avg * 2.2: risk_score += 25
             if count >= 20: risk_score += 10
             risk_score = int(max(0, min(100, risk_score)))
-            current_month_total, prev_month_total = total, 0.0
-            for row in month_compare_rows:
-                m = row.get("month")
-                if m == month_str: current_month_total = _safe_float(row.get("total"), current_month_total)
-                else: prev_month_total = _safe_float(row.get("total"), prev_month_total)
             trend_pct = ((current_month_total - prev_month_total) / prev_month_total) * 100 if prev_month_total > 0 else 0.0
             top_category = category_rows[0] if category_rows else None
             top_cat_name = CATEGORIES.get((top_category or {}).get("category_id"), "Diğer") if top_category else "Belirsiz"

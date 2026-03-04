@@ -15,10 +15,15 @@ const fmtMonth = (iso) => {
     return `${months[parseInt(m, 10) - 1]} ${y}`;
 };
 
+const toMonthKey = (d) => {
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${d.getFullYear()}-${month}`;
+};
+
 const shiftMonth = (iso, dir) => {
     const d = new Date(iso + '-01');
     d.setMonth(d.getMonth() + dir);
-    return d.toISOString().slice(0, 7);
+    return toMonthKey(d);
 };
 
 const STATUS_BADGE = {
@@ -41,7 +46,7 @@ const Expenses = () => {
     const toast = useToast();
 
     /* state */
-    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [month, setMonth] = useState(toMonthKey(new Date()));
     const [groups, setGroups] = useState([]);
     const [stats, setStats] = useState({ total: 0, paid: 0, remaining: 0, count: 0, pending_count: 0 });
     const [loading, setLoading] = useState(true);
@@ -211,7 +216,7 @@ const Expenses = () => {
 
     /* derived */
     const paidPct = useMemo(() => (stats.total > 0 ? Math.round((stats.paid / stats.total) * 100) : 0), [stats]);
-    const isCurrentMonth = month === new Date().toISOString().slice(0, 7);
+    const isCurrentMonth = month === toMonthKey(new Date());
 
     /* render */
     if (loading) {

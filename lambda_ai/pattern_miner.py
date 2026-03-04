@@ -84,6 +84,23 @@ class PatternMiner:
         projected_total = daily_rate * days_in_month
         elapsed_pct = (latest_day / days_in_month) * 100
 
+        # "Rayında mı?" sinyalini mevcut ayın kendi verisinden değil,
+        # geçmiş tamamlanmış aylara göre üret.
+        monthly_totals: dict = defaultdict(float)
+        for tx in transactions:
+            tx_date = str(tx.get("date") or "")
+            month_key = tx_date[:7]
+            if len(month_key) == 7:
+                monthly_totals[month_key] += sf(tx.get("amount"))
+        history_keys = sorted(k for k in monthly_totals.keys() if k < period)
+        recent_history = [monthly_totals[k] for k in history_keys[-3:]]
+        baseline_avg = statistics.mean(recent_history) if recent_history else None
+        on_track = (
+            projected_total <= (baseline_avg * 1.1)
+            if baseline_avg and baseline_avg > 0
+            else None
+        )
+
         return {
             "type": "spending_velocity",
             "days_elapsed": latest_day,
@@ -92,8 +109,8 @@ class PatternMiner:
             "current_total": round(total_spent, 2),
             "daily_avg": round(daily_rate, 2),
             "projected_month_end": round(projected_total, 2),
-            "on_track": projected_total
-            <= total_spent * (days_in_month / max(latest_day, 1)) * 1.1,
+            "on_track": on_track,
+            "baseline_monthly_avg": round(baseline_avg, 2) if baseline_avg else None,
         }
 
     # ── Day-of-Week Distribution ───────────────────────────────────

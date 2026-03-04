@@ -19,13 +19,15 @@ const formatCurrency = (value) =>
 const formatDateLabel = (value) => {
     if (!value) return '';
     try {
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return value; // Fallback if not date
-
         // If YYYY-MM format (length 7), show Month Year
         if (value.length === 7) {
+            const [y, m] = value.split('-').map(Number);
+            const date = new Date(y, (m || 1) - 1, 1);
             return date.toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' });
         }
+
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value; // Fallback if not date
         // If YYYY-MM-DD format, show Day Month
         return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
     } catch (e) {
