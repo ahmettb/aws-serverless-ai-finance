@@ -154,10 +154,27 @@ export const api = {
 
     getDashboardStats: () => fetchWithAuth('/dashboard'),
 
-    analyzeSpending: (data = {}) => fetchWithAuth('/analyze', {
-        method: 'POST',
-        body: JSON.stringify(data)
-    }),
+    analyzeSpending: async (data = {}) => {
+        let result = await fetchWithAuth('/analyze', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+
+        // Backend asenkron olarak "processing" döndürdüyse bitene kadar poll yap
+        let attempts = 0;
+        const maxAttempts = 20; // maks ~60 sn bekler
+        while (result && result.status === 'processing' && attempts < maxAttempts) {
+            attempts++;
+            const delay = result.poll_interval_ms || 3000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+
+            result = await fetchWithAuth('/analyze', {
+                method: 'POST',
+                body: JSON.stringify({ ...data, useCache: true, forceRecompute: false })
+            });
+        }
+        return result;
+    },
 
     getBudgets: () => fetchWithAuth('/budgets'),
     setBudget: (data) => fetchWithAuth('/budgets', { method: 'POST', body: JSON.stringify(data) }),
