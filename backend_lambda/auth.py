@@ -130,10 +130,30 @@ def handle_auth_register(body):
             "user_confirmed": response.get("UserConfirmed", False),
         })
     except cognito.exceptions.UsernameExistsException:
-        return api_response(409, {"error": "User with this email already exists"})
+        return api_response(409, {"error": "Bu e-posta adresiyle zaten bir hesap mevcut."})
+    except cognito.exceptions.InvalidPasswordException as exc:
+        # Cognito returns a human-readable message for password policy violations
+        raw = str(exc)
+        if "uppercase" in raw.lower():
+            detail = "Şifre en az bir büyük harf içermelidir."
+        elif "lowercase" in raw.lower():
+            detail = "Şifre en az bir küçük harf içermelidir."
+        elif "number" in raw.lower() or "numeric" in raw.lower():
+            detail = "Şifre en az bir rakam içermelidir."
+        elif "symbol" in raw.lower() or "special" in raw.lower():
+            detail = "Şifre en az bir özel karakter içermelidir (örn. !@#$)."
+        elif "long" in raw.lower() or "length" in raw.lower() or "short" in raw.lower():
+            detail = "Şifre en az 8 karakter uzunluğunda olmalıdır."
+        else:
+            detail = "Şifre politikası gereksinimlerini karşılamıyor. En az 8 karakter, büyük/küçük harf, rakam ve özel karakter içermelidir."
+        return api_response(400, {"error": detail})
+    except cognito.exceptions.InvalidParameterException as exc:
+        return api_response(400, {"error": f"Geçersiz parametre: {exc}"})
+    except cognito.exceptions.TooManyRequestsException:
+        return api_response(429, {"error": "Çok fazla istek gönderildi. Lütfen bir süre bekleyin."})
     except Exception as exc:
         logger.error(f"Registration failed: {exc}", exc_info=True)
-        return api_response(500, {"error": "Registration failed"})
+        return api_response(500, {"error": "Kayıt işlemi başarısız oldu. Lütfen tekrar deneyin."})
 
 
 def handle_auth_confirm(body):
@@ -173,7 +193,7 @@ def handle_auth_login(body):
         access_token = auth.get("AccessToken")
         refresh_token = auth.get("RefreshToken")
         if not id_token or not access_token:
-            return api_response(401, {"error": "Authentication failed"})
+            return api_response(401, {"error": "Kimlik doğrulama başarısız oldu."})
         claims = jwt.get_unverified_claims(id_token)
         user = _ensure_user_record(claims, fallback_full_name=(body or {}).get("full_name"))
         _save_refresh_token(user["id"], refresh_token)
@@ -188,13 +208,27 @@ def handle_auth_login(body):
                 "full_name": user.get("full_name"), "cognito_sub": user.get("cognito_sub"),
             },
         })
-    except cognito.exceptions.NotAuthorizedException:
-        return api_response(401, {"error": "Invalid credentials"})
+    except cognito.exceptions.NotAuthorizedException as exc:
+        raw = str(exc).lower()
+        if "incorrect username or password" in raw or "password" in raw:
+            msg = "E-posta adresi veya şifre hatalı."
+        elif "disabled" in raw:
+            msg = "Bu hesap devre dışı bırakılmış."
+        else:
+            msg = "Giriş yetkisi reddedildi. E-posta veya şifrenizi kontrol edin."
+        return api_response(401, {"error": msg})
     except cognito.exceptions.UserNotConfirmedException:
-        return api_response(403, {"error": "User is not confirmed"})
+        return api_response(403, {"error": "Hesabınız henüz doğrulanmamış. Lütfen e-postanıza gelen kodu girin."})
+    except cognito.exceptions.UserNotFoundException:
+        # Don't reveal whether the user exists — use a generic but helpful message
+        return api_response(401, {"error": "E-posta adresi veya şifre hatalı."})
+    except cognito.exceptions.TooManyRequestsException:
+        return api_response(429, {"error": "Çok fazla giriş denemesi. Lütfen bir süre bekleyin."})
+    except cognito.exceptions.PasswordResetRequiredException:
+        return api_response(403, {"error": "Şifrenizi sıfırlamanız gerekiyor. Lütfen 'Şifremi Unuttum' seçeneğini kullanın."})
     except Exception as exc:
         logger.error(f"Login failed: {exc}", exc_info=True)
-        return api_response(500, {"error": "Login failed"})
+        return api_response(500, {"error": "Giriş işlemi başarısız oldu. Lütfen tekrar deneyin."})
 
 
 def handle_auth_refresh(body):

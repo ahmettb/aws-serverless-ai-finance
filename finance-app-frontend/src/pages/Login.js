@@ -146,6 +146,12 @@ const Login = () => {
                                         value={formData.password}
                                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                                     />
+                                    {!isLogin && (
+                                        <p className="mt-1.5 text-xs text-slate-400 flex items-center gap-1">
+                                            <span className="material-icons-round text-xs">info</span>
+                                            En az 8 karakter, büyük/küçük harf, rakam ve özel karakter (!@#$) içermelidir.
+                                        </p>
+                                    )}
                                 </div>
                             </>
                         )}

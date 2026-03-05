@@ -118,7 +118,14 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, full_name }),
         });
-        if (!response.ok) throw new Error('Registration failed');
+        if (!response.ok) {
+            let errMsg = 'Kayıt işlemi başarısız oldu.';
+            try {
+                const err = await response.json();
+                errMsg = err.error || errMsg;
+            } catch (e) { }
+            throw new Error(errMsg);
+        }
         return response.json();
     },
 
